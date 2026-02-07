@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Backyard Ultra Tracker</title>
+<meta name="description" content="24H Backyard Ultra Training Tracker">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="BYU Tracker">
+<meta name="theme-color" content="#0a0a0a">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: #0a0a0a; color: #fff; overscroll-behavior: none; }
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+  @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-8px); } 75% { transform: translateX(8px); } }
+  .fade-up { animation: fadeUp 0.4s ease forwards; }
+  .shake { animation: shake 0.4s ease; }
+  .pulse { animation: pulse 1.5s ease infinite; }
+  input:focus { outline: none; }
+  button { border: none; cursor: pointer; font-family: inherit; }
+  .card { transition: all 0.3s ease; }
+  .card:active { transform: scale(0.98); }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+const PASSWORD = "2808";
+
+const PLAN = [
+  {
+    week: 1, dateRange: "07.02 – 08.02", goal: "Einstieg, Puls beruhigen, Rhythmus finden",
+    days: [
+      { date: "2026-02-07", day: "Sa", unit: "Long Run", dauer: "1:45–2:15 h", zone: "Zone 2", type: "run",
+        fokus: "Sehr locker. Gehpausen erlaubt. Fokus: Atmung & Rhythmus.",
+        detail: "Dein allererster Lauf im Plan. Das Ziel ist NICHT Tempo, sondern deinen Körper an längere Belastung zu gewöhnen. Du kommst von 5 km Sprints — dein Körper muss lernen, im aeroben Bereich zu bleiben. Lauf so langsam, dass du dich dabei unterhalten könntest. Gehpausen sind absolut erlaubt und sogar erwünscht. Achte auf deine Atmung: gleichmäßig, durch die Nase wenn möglich. Das trainiert genau das System, das dich bei Stunde 18+ am Leben hält." },
+      { date: "2026-02-08", day: "So", unit: "Recovery Run", dauer: "30–40 min", zone: "Zone 2", type: "run",
+        fokus: "Optional. Sehr locker oder komplett frei.",
+        detail: "Optional! Wenn deine Beine sich gut anfühlen, mach einen ultra-lockeren Lauf. Wenn nicht, nimm dir frei. Der Sinn ist, den Körper an Bewegung am Folgetag zu gewöhnen — genau wie beim Backyard Ultra, wo du nach jeder Runde wieder raus musst." },
+    ]
+  },
+  {
+    week: 2, dateRange: "09.02 – 15.02", goal: "Grundlagenausdauer & Struktur aufbauen",
+    days: [
+      { date: "2026-02-09", day: "Mo", unit: "Gym — Push Day", dauer: "–", zone: "–", type: "gym",
+        fokus: "Oberkörper. Keine schwere Beinbelastung.",
+        detail: "Normaler Push Day, aber ab jetzt gilt: keine schweren Squats oder Beinpresse. Deine Beine brauchen die Kapazität fürs Laufen. Fokus auf Brust, Schultern, Trizeps. Core-Arbeit ist goldwert — Planks, Pallof Press, etc. Ein stabiler Rumpf = weniger Energieverlust beim Laufen." },
+      { date: "2026-02-10", day: "Di", unit: "Dauerlauf", dauer: "60 min", zone: "Zone 2", type: "run",
+        fokus: "Locker, gleichmäßig, Gespräch möglich.",
+        detail: "60 Minuten am Stück in Zone 2. Das ist dein Brot-und-Butter-Lauf. Zone 2 bedeutet: du könntest dabei reden, ohne außer Atem zu kommen. Dein Herz-Kreislauf-System baut hier die Basis auf — mehr Kapillaren, bessere Fettverbrennung, effizienteres Herz. Genau das brauchst du für 24 Stunden." },
+      { date: "2026-02-11", day: "Mi", unit: "Gym — Pull Day", dauer: "–", zone: "–", type: "gym",
+        fokus: "Rücken & Core.",
+        detail: "Pull Day mit Fokus auf Rücken und Core. Dein Rücken muss dich 24 Stunden aufrecht halten. Deadlifts nur leicht, Rows, Klimmzüge, und unbedingt Core-Stabilität: Dead Bugs, Bird Dogs, Pallof Press." },
+      { date: "2026-02-12", day: "Do", unit: "Tempolauf", dauer: "45–55 min", zone: "Zone 2–3", type: "tempo",
+        fokus: "Letzte 10 min kontrolliert zügig.",
+        detail: "Starte 35–45 min in Zone 2, dann steigere die letzten 10 Minuten in Zone 3. Das trainiert deinen Körper, auch unter leichter Ermüdung noch Tempo halten zu können. Beim Backyard Ultra wirst du in den späten Stunden genau das brauchen — müde Beine, aber trotzdem 6,7 km in unter 60 min schaffen." },
+      { date: "2026-02-13", day: "Fr", unit: "Pause", dauer: "–", zone: "–", type: "rest",
+        fokus: "Regeneration.",
+        detail: "Komplette Pause. Dein Körper wird stärker in der Erholung, nicht im Training. Schlaf mindestens 7–8 Stunden, trinke genug, iss proteinreich. Stretching oder Foam Rolling sind optional aber hilfreich." },
+      { date: "2026-02-14", day: "Sa", unit: "Long Run", dauer: "2:00 h", zone: "Zone 2", type: "longrun",
+        fokus: "Zeit auf den Beinen. Ernährung testen.",
+        detail: "2 Stunden in Zone 2. Jetzt wird's ernst: Teste hier schon mal deine Verpflegung. Was isst du vor dem Lauf? Was nimmst du mit? Beim Backyard Ultra hast du zwischen den Runden ca. 15–20 min Pause — da musst du essen und trinken. Finde jetzt raus, was dein Magen verträgt. Gels, Bananen, Brote, Datteln — probier aus!" },
+      { date: "2026-02-15", day: "So", unit: "Lockerer Lauf", dauer: "40 min", zone: "Zone 2", type: "run",
+        fokus: "Müde Beine akzeptieren.",
+        detail: "Deine Beine werden sich schwer anfühlen nach gestern. Das ist gewollt! Diesen Lauf machst du trotzdem — ultra-locker. Dein Körper lernt dabei, auch im ermüdeten Zustand zu laufen. Genau wie beim Backyard: Runde 15 fühlt sich an wie Blei, aber du musst trotzdem raus." },
+    ]
+  },
+  {
+    week: 3, dateRange: "16.02 – 22.02", goal: "Ermüdungsresistenz aufbauen",
+    days: [
+      { date: "2026-02-16", day: "Mo", unit: "Gym — Push Day", dauer: "–", zone: "–", type: "gym",
+        fokus: "Oberkörper.",
+        detail: "Push Day wie gewohnt. Halte das Volumen moderat — du brauchst Energie für die Laufwoche. Core nicht vergessen!" },
+      { date: "2026-02-17", day: "Di", unit: "Dauerlauf", dauer: "70 min", zone: "Zone 2", type: "run",
+        fokus: "Ruhig. Puls kontrollieren.",
+        detail: "10 Minuten mehr als letzte Woche. Klingt wenig, ist aber ein wichtiger Stimulus. Dein aerober Motor wird effizienter. Achte darauf, dass dein Puls wirklich in Zone 2 bleibt — auch wenn es bergauf geht in Santa Cruz. Lieber langsamer als zu schnell." },
+      { date: "2026-02-18", day: "Mi", unit: "Gym — Pull Day", dauer: "–", zone: "–", type: "gym",
+        fokus: "Core-Stabilität.",
+        detail: "Pull Day. Fokus: Core-Stabilität wird jetzt wichtiger. Dein Rumpf muss dich über 160 km tragen. Mach extra Sätze Planks, Side Planks, und Anti-Rotations-Übungen." },
+      { date: "2026-02-19", day: "Do", unit: "Tempolauf", dauer: "60 min", zone: "Zone 3", type: "tempo",
+        fokus: "4×6 min zügig, 2 min locker.",
+        detail: "Intervalle! 15 min Einlaufen in Zone 2. Dann 4 Blöcke à 6 Minuten in Zone 3 mit je 2 Minuten lockerem Joggen dazwischen. Danach Auslaufen. Diese Einheit steigert deine Laktatschwelle — du kannst dadurch schneller laufen, ohne zu übersäuern. Beim Backyard heißt das: 6,7 km fühlen sich leichter an." },
+      { date: "2026-02-20", day: "Fr", unit: "Pause", dauer: "–", zone: "–", type: "rest",
+        fokus: "Regeneration.",
+        detail: "Pause. Nutze den Tag für Mobilität, Stretching, oder einfach nichts. Schlaf ist King." },
+      { date: "2026-02-21", day: "Sa", unit: "Long Run", dauer: "2:45 h", zone: "Zone 2", type: "longrun",
+        fokus: "Monoton laufen. Mentaltraining.",
+        detail: "Fast 3 Stunden! Hier geht's nicht nur um die Beine, sondern um den Kopf. Du hast gesagt, beim letzten Mal war der Kopf ein Problem. Diese langen Läufe trainieren genau das. Lauf eine langweilige Strecke. Kein Podcast. Kein Ablenkung. Lerne, mit der Monotonie umzugehen. Beim Backyard Ultra läufst du 24x die gleiche Strecke — das muss dein Kopf können." },
+      { date: "2026-02-22", day: "So", unit: "Lockerer Lauf", dauer: "45 min", zone: "Zone 2", type: "run",
+        fokus: "Sehr entspannt.",
+        detail: "Recovery. Maximal locker. Dein Körper verarbeitet den langen Lauf von gestern. Wenn du dich schlecht fühlst, mach nur 30 min oder lass es ganz." },
+    ]
+  },
+  {
+    week: 4, dateRange: "23.02 – 01.03", goal: "Zeit auf den Beinen maximieren",
+    days: [
+      { date: "2026-02-23", day: "Mo", unit: "Gym — Push Day", dauer: "–", zone: "–", type: "gym",
+        fokus: "Leicht.",
+        detail: "Push Day, aber jetzt leichter als gewohnt. Dein Körper braucht die Energie fürs Laufen. Weniger Gewicht, gleiche Technik. Core weiterhin wichtig." },
+      { date: "2026-02-24", day: "Di", unit: "Dauerlauf", dauer: "75 min", zone: "Zone 2", type: "run",
+        fokus: "Locker.",
+        detail: "75 Minuten in Zone 2. Dein aerober Motor ist jetzt schon deutlich besser als vor 2 Wochen. Du solltest merken, dass der gleiche Puls jetzt schneller ist als am Anfang. Das ist Fortschritt!" },
+      { date: "2026-02-25", day: "Mi", unit: "Gym — Pull Day", dauer: "–", zone: "–", type: "gym",
+        fokus: "Stabilität.",
+        detail: "Pull Day mit Fokus auf Stabilität. Dein Körper wird jetzt durch das Laufvolumen beansprucht — halte das Gym-Training supportiv, nicht zerstörerisch." },
+      { date: "2026-02-26", day: "Do", unit: "Tempolauf", dauer: "65 min", zone: "Zone 3", type: "tempo",
+        fokus: "3×10 min zügig.",
+        detail: "Längere Tempo-Blöcke: 3×10 min in Zone 3 mit je 3 min Pause. Das ist hart, aber baut massive Ausdauer auf. Stell dir vor: wenn du 10 min in Zone 3 locker durchhältst, sind 6,7 km in Zone 2 beim Backyard ein Spaziergang." },
+      { date: "2026-02-27", day: "Fr", unit: "Pause", dauer: "–", zone: "–", type: "rest",
+        fokus: "Regeneration.",
+        detail: "Pause. Dein Körper hat diese Woche viel geleistet. Schlaf, Ernährung, Hydration — das sind deine drei besten Freunde." },
+      { date: "2026-02-28", day: "Sa", unit: "Long Run", dauer: "3:30 h", zone: "Zone 2", type: "longrun",
+        fokus: "Essen, Trinken, Rhythmus.",
+        detail: "3,5 Stunden. Das ist dein längster Lauf bisher. Teste ALLES: Schuhe, Socken, Ernährung, Trinken. Was du hier trägst, trägst du am Race Day. Iss alle 45–60 min etwas. Trink regelmäßig. Finde deinen Rhythmus. Bedenke: auf Teneriffa ist es warm — in England wird es kalt sein. Zieh dich eher wärmer an beim Training, damit der Temperaturschock kleiner wird." },
+      { date: "2026-03-01", day: "So", unit: "Pause", dauer: "–", zone: "–", type: "rest",
+        fokus: "Komplette Erholung.",
+        detail: "Komplette Pause. Nach 3,5 h brauchst du das. Beine hoch, gut essen, viel schlafen." },
+    ]
+  },
+  {
+    week: 5, dateRange: "02.03 – 08.03", goal: "Peak Belastung — härteste Woche",
+    days: [
+      { date: "2026-03-02", day: "Mo", unit: "Gym — Push Day", dauer: "–", zone: "–", type: "gym",
+        fokus: "Sehr leicht.",
+        detail: "Sehr leichtes Gym. Dein Körper ist jetzt auf Peak-Belastung. Das Gym ist ab jetzt nur noch Maintenance — du willst nichts kaputtmachen." },
+      { date: "2026-03-03", day: "Di", unit: "Dauerlauf", dauer: "60 min", zone: "Zone 2", type: "run",
+        fokus: "Locker.",
+        detail: "Bewusst kürzer als letzte Woche. Dein Körper soll sich auf den Key Run am Samstag vorbereiten. Locker und entspannt." },
+      { date: "2026-03-04", day: "Mi", unit: "Gym — Pull Day", dauer: "–", zone: "–", type: "gym",
+        fokus: "Leicht.",
+        detail: "Leichter Pull Day. Letzte richtige Gym-Woche vor dem Taper. Genieß es." },
+      { date: "2026-03-05", day: "Do", unit: "Fast Finish Run", dauer: "70 min", zone: "Zone 2–3", type: "tempo",
+        fokus: "Letzte 20 min zügig.",
+        detail: "50 min locker in Zone 2, dann die letzten 20 min in Zone 3. Das simuliert Ermüdung: du bist schon müde und musst trotzdem Tempo machen. Genau wie Stunde 20 beim Backyard." },
+      { date: "2026-03-06", day: "Fr", unit: "Pause", dauer: "–", zone: "–", type: "rest",
+        fokus: "Regeneration.",
+        detail: "Wichtige Pause vor dem längsten Lauf des Plans. Schlaf gut, iss gut, trinke viel." },
+      { date: "2026-03-07", day: "Sa", unit: "Key Run", dauer: "4:00–4:30 h", zone: "Zone 2", type: "longrun",
+        fokus: "Längster Lauf + Verpflegung testen.",
+        detail: "DER wichtigste Lauf im ganzen Plan. 4–4,5 Stunden. Das ist dein Dress Rehearsal. Alles wird getestet: Schuhe, Klamotten, Essen, Trinken, mentale Stärke. Versuche, einen Teil davon in der Dämmerung oder Dunkelheit zu laufen — beim Backyard wirst du nachts laufen. Iss alle 45 min. Trink alle 20 min. Wenn du das hier überstehst, weißt du, dass du es am Race Day auch kannst." },
+      { date: "2026-03-08", day: "So", unit: "Pause", dauer: "–", zone: "–", type: "rest",
+        fokus: "Beine hoch.",
+        detail: "Absolute Ruhe. Du hast es dir verdient. Ab jetzt beginnt der Taper — es wird leichter." },
+    ]
+  },
+  {
+    week: 6, dateRange: "09.03 – 15.03", goal: "Taper — Frische aufbauen",
+    days: [
+      { date: "2026-03-09", day: "Mo", unit: "Gym — Optional", dauer: "–", zone: "–", type: "gym",
+        fokus: "Sehr leicht.",
+        detail: "Gym ist jetzt optional. Wenn du gehst, dann ultra-leicht. Kein Muskelkater! Dein Körper soll sich erholen und Energie speichern." },
+      { date: "2026-03-10", day: "Di", unit: "Dauerlauf", dauer: "60 min", zone: "Zone 2", type: "run",
+        fokus: "Locker.",
+        detail: "Lockerer Dauerlauf. Du wirst dich vielleicht unruhig fühlen, weil das Volumen abnimmt. Das ist normal und gewollt! Dein Körper baut jetzt die Fitness auf, die du in den letzten Wochen angeregt hast." },
+      { date: "2026-03-11", day: "Mi", unit: "Pause", dauer: "–", zone: "–", type: "rest",
+        fokus: "Erholung.",
+        detail: "Pause. Genieße es." },
+      { date: "2026-03-12", day: "Do", unit: "Tempolauf", dauer: "45 min", zone: "Zone 3", type: "tempo",
+        fokus: "3×5 min zügig.",
+        detail: "Kurze, knackige Intervalle: 3×5 min in Zone 3. Das hält dein System scharf, ohne dich zu ermüden. Wie ein Boxer, der vor dem Kampf nur noch leichte Combos schlägt." },
+      { date: "2026-03-13", day: "Fr", unit: "Pause", dauer: "–", zone: "–", type: "rest",
+        fokus: "Regeneration.",
+        detail: "Pause vor dem letzten langen Lauf." },
+      { date: "2026-03-14", day: "Sa", unit: "Long Run", dauer: "3:00 h", zone: "Zone 2", type: "longrun",
+        fokus: "Letzter längerer Lauf.",
+        detail: "3 Stunden — kürzer als letzte Woche, aber immer noch bedeutsam. Das ist dein letzter langer Lauf vor dem Race. Danach wird alles kürzer. Genieße es, lauf locker, und stelle dir vor, wie du in 2 Wochen die 24. Runde finishst." },
+      { date: "2026-03-15", day: "So", unit: "Pause", dauer: "–", zone: "–", type: "rest",
+        fokus: "Erholung.",
+        detail: "Komplette Erholung. Ab nächster Woche ist Race Week Prep." },
+    ]
+  },
+  {
+    week: 7, dateRange: "16.03 – 29.03", goal: "Frische & Wettkampf",
+    days: [
+      { date: "2026-03-17", day: "Mo", unit: "Lockerer Lauf", dauer: "45 min", zone: "Zone 2", type: "run",
+        fokus: "Locker bleiben.",
+        detail: "Nur locker bleiben. Dein Körper ist jetzt bereit — du musst ihn nur frisch halten. Keine Experimente, kein Tempo. Einfach laufen und genießen." },
+      { date: "2026-03-19", day: "Mi", unit: "Lockerer Lauf", dauer: "30 min", zone: "Zone 2", type: "run",
+        fokus: "3 Steigerungen am Ende.",
+        detail: "30 min locker, dann 3 kurze Steigerungen (je 20 Sekunden). Das aktiviert dein Nervensystem und hält deine Beine schnell, ohne sie zu ermüden." },
+      { date: "2026-03-21", day: "Fr", unit: "Shakeout Run", dauer: "20 min", zone: "Zone 2", type: "run",
+        fokus: "Nur Bewegung.",
+        detail: "20 Minuten. Das war's. Einfach bewegen, Beine lockern. Danach: Tasche packen, Reise nach England vorbereiten, Ernährungsplan für den Race Day finalisieren." },
+      { date: "2026-03-29", day: "Sa", unit: "BACKYARD ULTRA", dauer: "24 STUNDEN", zone: "Zone 2", type: "race",
+        fokus: "FINISH. Ruhig bleiben. Du schaffst das.",
+        detail: "Das ist es. 24 Stunden. 24 Runden. 160,8 km. Starte LANGSAM — die ersten 6–8 Runden in unter 45 min laufen und den Rest SITZEN und ESSEN. Nicht rumstehen! Jede Minute Stehen kostet Energie. Iss ab Runde 1 regelmäßig. Wenn es mental schwer wird (Runde 12–18), denk daran: dein Körper kann mehr als dein Kopf glaubt. Die letzten 6 Runden sind reine Willenskraft. Du hast dafür trainiert. Bleib in Zone 2. Bleib ruhig. Finish." },
+    ]
+  },
+];
+
+const ALL_DAYS = PLAN.flatMap(w => w.days.map(d => ({ ...d, week: w.week, weekGoal: w.goal, weekRange: w.dateRange })));
+
+const TYPE_STYLES = {
+  run:     { bg: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.25)", text: "#34d399", label: "ZONE 2 LAUF", dot: "#10b981" },
+  longrun: { bg: "rgba(16,185,129,0.1)",  border: "1px solid rgba(16,185,129,0.3)",  text: "#6ee7b7", label: "LONG RUN",    dot: "#34d399" },
+  tempo:   { bg: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.25)", text: "#fbbf24", label: "TEMPO",       dot: "#f59e0b" },
+  gym:     { bg: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.25)", text: "#60a5fa", label: "GYM",         dot: "#3b82f6" },
+  rest:    { bg: "rgba(139,92,246,0.08)", border: "1px solid rgba(139,92,246,0.25)", text: "#a78bfa", label: "PAUSE",       dot: "#8b5cf6" },
+  race:    { bg: "rgba(239,68,68,0.1)",   border: "1px solid rgba(239,68,68,0.3)",   text: "#f87171", label: "RACE DAY",    dot: "#ef4444" },
+};
+
+function getToday() {
+  return new Date().toISOString().split("T")[0];
+}
+
+function LoginScreen({ onLogin }) {
+  const [pin, setPin] = useState("");
+  const [error, setError] = useState(false);
+  const [shaking, setShaking] = useState(false);
+
+  function handleKey(n) {
+    if (n === "del") { setPin(p => p.slice(0, -1)); return; }
+    if (pin.length >= 4) return;
+    const next = pin + n;
+    setPin(next);
+    if (next.length === 4) {
+      setTimeout(() => {
+        if (next === PASSWORD) { localStorage.setItem("byu-auth", "true"); onLogin(); }
+        else { setError(true); setShaking(true); setPin(""); setTimeout(() => { setShaking(false); setError(false); }, 600); }
+      }, 150);
+    }
+  }
+
+  const keys = [1,2,3,4,5,6,7,8,9,null,0,"del"];
+
+  return (
+    <div style={{ minHeight:"100vh", background:"linear-gradient(135deg,#0a0a0a 0%,#1a1a2e 50%,#0a0a0a 100%)", display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+      <div className={shaking ? "shake" : ""} style={{ textAlign:"center" }}>
+        <div style={{ fontSize:64, marginBottom:8 }}>🐺</div>
+        <h1 style={{ fontFamily:"Georgia,serif", fontSize:22, letterSpacing:"0.15em", color:"#fff", marginBottom:4 }}>BACKYARD ULTRA</h1>
+        <p style={{ color:"#666", fontSize:12, letterSpacing:"0.2em", marginBottom:32 }}>24H TRAINING TRACKER</p>
+
+        <div style={{ display:"flex", gap:12, justifyContent:"center", marginBottom:28 }}>
+          {[0,1,2,3].map(i => (
+            <div key={i} style={{
+              width:16, height:16, borderRadius:"50%", border:"2px solid",
+              borderColor: error ? "#ef4444" : i < pin.length ? "#f97316" : "#444",
+              background: i < pin.length ? "#f97316" : "transparent",
+              transition: "all 0.2s"
+            }} />
+          ))}
+        </div>
+
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12, maxWidth:240, margin:"0 auto" }}>
+          {keys.map((n, i) => n === null ? <div key={i}/> : (
+            <button key={i} onClick={() => handleKey(n)}
+              style={{ width:64, height:64, borderRadius:16, background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.08)", color:"#fff", fontSize:20, fontWeight:500, display:"flex", alignItems:"center", justifyContent:"center" }}>
+              {n === "del" ? "⌫" : n}
+            </button>
+          ))}
+        </div>
+        {error && <p style={{ color:"#ef4444", fontSize:13, marginTop:16 }}>Falscher Code</p>}
+      </div>
+    </div>
+  );
+}
+
+function ProgressRing({ progress, size = 90, stroke = 6 }) {
+  const r = (size - stroke) / 2;
+  const circ = 2 * Math.PI * r;
+  const offset = circ - (progress / 100) * circ;
+  return (
+    <svg width={size} height={size} style={{ transform:"rotate(-90deg)" }}>
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={stroke}/>
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="url(#pgrad)" strokeWidth={stroke}
+        strokeDasharray={circ} strokeDashoffset={offset} strokeLinecap="round"
+        style={{ transition:"stroke-dashoffset 1s ease" }}/>
+      <defs>
+        <linearGradient id="pgrad" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor="#f97316"/>
+          <stop offset="100%" stopColor="#ef4444"/>
+        </linearGradient>
+      </defs>
+    </svg>
+  );
+}
+
+function DayCard({ day, checked, onToggle, isToday, expanded, onExpand }) {
+  const s = TYPE_STYLES[day.type] || TYPE_STYLES.run;
+  const d = new Date(day.date + "T00:00:00");
+  const dayNum = d.getDate();
+  const monthShort = d.toLocaleDateString("de-DE", { month:"short" });
+  const today = getToday();
+  const isPast = day.date < today && !checked;
+
+  return (
+    <div className="card" onClick={onExpand}
+      style={{
+        borderRadius:16, border: s.border, background: s.bg, overflow:"hidden",
+        boxShadow: isToday ? "0 0 0 2px rgba(249,115,22,0.4)" : "none",
+        opacity: checked ? 0.55 : 1, marginBottom:10
+      }}>
+      <div style={{ padding:16, display:"flex", alignItems:"flex-start", gap:16 }}>
+        {/* Date */}
+        <div style={{ textAlign:"center", flexShrink:0, minWidth:48 }}>
+          <div style={{ fontSize:26, fontWeight:700, color: isToday ? "#f97316" : "#fff" }}>{dayNum}</div>
+          <div style={{ fontSize:11, color:"#777", textTransform:"uppercase" }}>{monthShort}</div>
+          {isToday && <div style={{ fontSize:10, color:"#f97316", fontWeight:700, marginTop:4, letterSpacing:"0.1em" }}>HEUTE</div>}
+        </div>
+
+        {/* Content */}
+        <div style={{ flex:1, minWidth:0 }}>
+          <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4, flexWrap:"wrap" }}>
+            <span style={{ fontSize:11, fontWeight:700, letterSpacing:"0.08em", color: s.text }}>{s.label}</span>
+            {day.zone !== "–" && <span style={{ color:"#555", fontSize:11 }}>·</span>}
+            {day.zone !== "–" && <span style={{ color:"#999", fontSize:11 }}>{day.zone}</span>}
+            {isPast && <span style={{ color:"rgba(239,68,68,0.5)", fontSize:11, marginLeft:"auto" }}>verpasst?</span>}
+          </div>
+          <h3 style={{ fontWeight:700, fontSize:17, color: checked ? "#666" : "#fff", textDecoration: checked ? "line-through" : "none", margin:0 }}>{day.unit}</h3>
+          <div style={{ display:"flex", alignItems:"center", gap:10, marginTop:6, flexWrap:"wrap" }}>
+            {day.dauer !== "–" && <span style={{ color:"#bbb", fontSize:13 }}>{day.dauer}</span>}
+            <span style={{ color:"#666", fontSize:13 }}>{day.fokus}</span>
+          </div>
+        </div>
+
+        {/* Checkbox */}
+        <button onClick={e => { e.stopPropagation(); onToggle(); }}
+          style={{
+            width:42, height:42, borderRadius:12, flexShrink:0,
+            border: checked ? "2px solid #f97316" : "2px solid #555",
+            background: checked ? "#f97316" : "transparent",
+            display:"flex", alignItems:"center", justifyContent:"center",
+            color:"#fff", fontSize:18, fontWeight:700, transition:"all 0.2s"
+          }}>
+          {checked ? "✓" : ""}
+        </button>
+      </div>
+
+      {expanded && (
+        <div style={{ padding:"0 16px 16px", borderTop:"1px solid rgba(255,255,255,0.05)", marginTop:-2, paddingTop:14 }}>
+          <p style={{ color:"#ccc", fontSize:14, lineHeight:1.6 }}>{day.detail}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function App() {
+  const [authed, setAuthed] = useState(localStorage.getItem("byu-auth") === "true");
+  const [checkedDays, setCheckedDays] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("byu-checked") || "{}"); } catch { return {}; }
+  });
+  const [expandedDay, setExpandedDay] = useState(null);
+  const [activeWeek, setActiveWeek] = useState(null);
+
+  const today = getToday();
+
+  useEffect(() => {
+    const cw = PLAN.find(w => w.days.some(d => d.date === today))?.week
+      || PLAN.find(w => w.days.some(d => d.date >= today))?.week
+      || PLAN[PLAN.length - 1].week;
+    setActiveWeek(cw);
+  }, []);
+
+  function toggleDay(date) {
+    const next = { ...checkedDays };
+    next[date] = !next[date];
+    if (!next[date]) delete next[date];
+    setCheckedDays(next);
+    localStorage.setItem("byu-checked", JSON.stringify(next));
+  }
+
+  if (!authed) return <LoginScreen onLogin={() => setAuthed(true)} />;
+
+  const totalDays = ALL_DAYS.length;
+  const checkedCount = Object.values(checkedDays).filter(Boolean).length;
+  const progress = Math.round((checkedCount / totalDays) * 100);
+  const todayEntry = ALL_DAYS.find(d => d.date === today);
+  const upcoming = ALL_DAYS.filter(d => d.date > today).slice(0, 3);
+  const raceDate = new Date("2026-03-29T00:00:00");
+  const todayDate = new Date(today + "T00:00:00");
+  const daysUntilRace = Math.max(0, Math.ceil((raceDate - todayDate) / (1000*60*60*24)));
+
+  return (
+    <div style={{ minHeight:"100vh", background:"linear-gradient(180deg,#0a0a0a 0%,#111118 100%)", paddingBottom:80 }}>
+
+      {/* Header */}
+      <div style={{ background:"linear-gradient(135deg,rgba(249,115,22,0.12) 0%,rgba(239,68,68,0.06) 100%)", borderBottom:"1px solid rgba(255,255,255,0.05)" }}>
+        <div style={{ maxWidth:640, margin:"0 auto", padding:24 }}>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:24 }}>
+            <div>
+              <h1 style={{ fontSize:24, fontWeight:700, fontFamily:"Georgia,serif", margin:0 }}>BACKYARD ULTRA</h1>
+              <p style={{ color:"#777", fontSize:13, margin:"4px 0 0" }}>Lone Wolf SE · 29. März 2026</p>
+            </div>
+            <div style={{ textAlign:"right" }}>
+              <div style={{ fontSize:32, fontWeight:700, color:"#f97316" }}>{daysUntilRace}</div>
+              <div style={{ color:"#777", fontSize:10, letterSpacing:"0.15em" }}>TAGE BIS RACE</div>
+            </div>
+          </div>
+
+          <div style={{ display:"flex", alignItems:"center", gap:24 }}>
+            <div style={{ position:"relative", flexShrink:0 }}>
+              <ProgressRing progress={progress} />
+              <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center" }}>
+                <span style={{ fontSize:20, fontWeight:700 }}>{progress}%</span>
+              </div>
+            </div>
+            <div style={{ flex:1 }}>
+              <div style={{ display:"flex", justifyContent:"space-between", fontSize:13, marginBottom:8 }}>
+                <span style={{ color:"#999" }}>Fortschritt</span>
+                <span style={{ color:"#666" }}>{checkedCount}/{totalDays} Einheiten</span>
+              </div>
+              <div style={{ height:8, background:"rgba(255,255,255,0.05)", borderRadius:4, overflow:"hidden" }}>
+                <div style={{ height:"100%", borderRadius:4, background:"linear-gradient(90deg,#f97316,#ef4444)", width:`${progress}%`, transition:"width 1s ease" }}/>
+              </div>
+              <div style={{ display:"flex", gap:14, marginTop:12, flexWrap:"wrap" }}>
+                {Object.entries(TYPE_STYLES).map(([k,v]) => (
+                  <div key={k} style={{ display:"flex", alignItems:"center", gap:5 }}>
+                    <div style={{ width:7, height:7, borderRadius:"50%", background:v.dot }}/>
+                    <span style={{ color:"#666", fontSize:10 }}>{v.label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ maxWidth:640, margin:"0 auto", padding:"0 20px" }}>
+
+        {/* Today */}
+        {todayEntry && (
+          <div style={{ paddingTop:24 }}>
+            <h2 style={{ fontSize:11, fontWeight:700, color:"#f97316", letterSpacing:"0.15em", marginBottom:12 }}>
+              HEUTE — {new Date(today+"T00:00:00").toLocaleDateString("de-DE",{weekday:"long",day:"numeric",month:"long"})}
+            </h2>
+            <DayCard day={todayEntry} checked={!!checkedDays[todayEntry.date]} onToggle={() => toggleDay(todayEntry.date)}
+              isToday={true} expanded={expandedDay===todayEntry.date} onExpand={() => setExpandedDay(expandedDay===todayEntry.date?null:todayEntry.date)} />
+          </div>
+        )}
+
+        {/* Upcoming */}
+        {upcoming.length > 0 && (
+          <div style={{ paddingTop:24 }}>
+            <h2 style={{ fontSize:11, fontWeight:700, color:"#666", letterSpacing:"0.15em", marginBottom:12 }}>NÄCHSTE EINHEITEN</h2>
+            {upcoming.map(d => (
+              <DayCard key={d.date} day={d} checked={!!checkedDays[d.date]} onToggle={() => toggleDay(d.date)}
+                isToday={false} expanded={expandedDay===d.date} onExpand={() => setExpandedDay(expandedDay===d.date?null:d.date)} />
+            ))}
+          </div>
+        )}
+
+        {/* Weeks Nav */}
+        <div style={{ paddingTop:32 }}>
+          <h2 style={{ fontSize:11, fontWeight:700, color:"#666", letterSpacing:"0.15em", marginBottom:12 }}>WOCHEN</h2>
+          <div style={{ display:"flex", gap:8, overflowX:"auto", paddingBottom:8 }}>
+            {PLAN.map(w => {
+              const wc = w.days.filter(d => checkedDays[d.date]).length;
+              const isActive = activeWeek === w.week;
+              const isCurrent = w.days.some(d => d.date === today);
+              return (
+                <button key={w.week} onClick={() => setActiveWeek(w.week)}
+                  style={{
+                    flexShrink:0, padding:"10px 16px", borderRadius:12,
+                    border: isActive ? "1px solid rgba(249,115,22,0.4)" : "1px solid rgba(255,255,255,0.05)",
+                    background: isActive ? "rgba(249,115,22,0.12)" : "rgba(255,255,255,0.02)",
+                    color: isActive ? "#f97316" : "#888", textAlign:"center"
+                  }}>
+                  <div style={{ fontSize:12, fontWeight:700 }}>W{w.week}</div>
+                  <div style={{ fontSize:10, opacity:0.6, marginTop:2 }}>{wc}/{w.days.length}</div>
+                  {isCurrent && <div style={{ width:6, height:6, borderRadius:"50%", background:"#f97316", margin:"4px auto 0" }}/>}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Active Week */}
+        {activeWeek && (() => {
+          const w = PLAN.find(w => w.week === activeWeek);
+          if (!w) return null;
+          return (
+            <div style={{ paddingTop:16 }}>
+              <h3 style={{ fontSize:18, fontWeight:700, margin:0 }}>
+                Woche {w.week} <span style={{ color:"#666", fontWeight:400, fontSize:14 }}>· {w.dateRange}</span>
+              </h3>
+              <p style={{ color:"rgba(249,115,22,0.7)", fontSize:13, marginTop:4, marginBottom:16 }}>{w.goal}</p>
+              {w.days.map(d => (
+                <DayCard key={d.date} day={d} checked={!!checkedDays[d.date]} onToggle={() => toggleDay(d.date)}
+                  isToday={d.date===today} expanded={expandedDay===d.date}
+                  onExpand={() => setExpandedDay(expandedDay===d.date?null:d.date)} />
+              ))}
+            </div>
+          );
+        })()}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.render(<App />, document.getElementById("root"));
+</script>
+</body>
+</html>
