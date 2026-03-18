@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Race Day Tracker — Backyard Ultra</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0a0a0a">
+<link rel="icon" type="image/x-icon" href="favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;background:#0a0a0a;color:#fff;overscroll-behavior:none}
+button{border:none;cursor:pointer;font-family:inherit}
+@keyframes pop{0%{transform:scale(1)}50%{transform:scale(1.08)}100%{transform:scale(1)}}
+@keyframes glow{0%,100%{box-shadow:0 0 20px rgba(249,115,22,.2)}50%{box-shadow:0 0 40px rgba(249,115,22,.4)}}
+@keyframes confetti{0%{opacity:1;transform:translateY(0) rotate(0)}100%{opacity:0;transform:translateY(-80px) rotate(360deg)}}
+.pop{animation:pop .4s ease}
+.glow{animation:glow 2s ease infinite}
+.sync-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-left:10px;vertical-align:middle}
+.sync-dot.online{background:#10b981}.sync-dot.offline{background:#ef4444}.sync-dot.syncing{background:#f59e0b}
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const{useState,useEffect,useRef}=React;
+
+const FIREBASE_URL="https://backyard-tracker-default-rtdb.europe-west1.firebasedatabase.app";
+const RACE_PATH="/tracker/raceday.json";
+const KM_PER_LAP=6.706;
+const MI_PER_LAP=4.167;
+const TOTAL_LAPS=24;
+const TOTAL_KM=KM_PER_LAP*TOTAL_LAPS; // 160.944
+const TOTAL_MI=MI_PER_LAP*TOTAL_LAPS; // 100.008
+
+async function raceSave(data){
+  try{const r=await fetch(FIREBASE_URL+RACE_PATH,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)});return r.ok}catch{return false}
+}
+async function raceLoad(){
+  try{const r=await fetch(FIREBASE_URL+RACE_PATH);if(!r.ok)return null;return(await r.json())||null}catch{return null}
+}
+
+const MILESTONES=[
+  {laps:1,emoji:"🚀",text:"Erste Runde geschafft! Der Anfang ist gemacht."},
+  {laps:3,emoji:"🏃",text:"20 km — du bist warm!"},
+  {laps:4,emoji:"🎯",text:"Halbmarathon-Distanz überschritten!",highlight:true},
+  {laps:6,emoji:"🔥",text:"Marathon-Distanz geschafft! Ab hier ist alles Bonus.",highlight:true},
+  {laps:8,emoji:"💪",text:"50 km — ein Drittel ist rum!"},
+  {laps:10,emoji:"🌙",text:"Über 67 km — mehr als ein normaler Ultra!"},
+  {laps:12,emoji:"⚡",text:"HALBZEIT! 12 von 24 Runden. 50 Meilen. Du bist ein Beast.",highlight:true},
+  {laps:15,emoji:"🐺",text:"100 km überschritten! Nur noch 9 Runden."},
+  {laps:16,emoji:"🎉",text:"Zwei Drittel geschafft! Nur noch 8 Stunden."},
+  {laps:18,emoji:"🏔️",text:"Nur noch ein Marathon! 6 Runden = 42 km.",highlight:true},
+  {laps:20,emoji:"😤",text:"Nur noch 4 Runden! Das ist ein lockerer Samstags-Lauf."},
+  {laps:21,emoji:"🔜",text:"Nur noch ein Halbmarathon! 3 Runden.",highlight:true},
+  {laps:22,emoji:"💥",text:"Nur noch 2 Runden! Du riechst das Finish."},
+  {laps:23,emoji:"🤯",text:"EINE. LETZTE. RUNDE. Gib alles!",highlight:true},
+  {laps:24,emoji:"🏆",text:"100 MEILEN. 24 STUNDEN. DU HAST ES GESCHAFFT!!! 🐺🔥",highlight:true},
+];
+
+function ProgressArc({laps,size=280,stroke=14}){
+  const r=(size-stroke)/2;const circ=2*Math.PI*r;
+  const progress=Math.min(laps/TOTAL_LAPS,1);
+  const offset=circ-(progress)*circ;
+  // Tick marks for each hour
+  const ticks=[];
+  for(let i=0;i<=TOTAL_LAPS;i++){
+    const angle=(i/TOTAL_LAPS)*360-90;
+    const rad=angle*Math.PI/180;
+    const x1=size/2+Math.cos(rad)*(r-stroke/2-2);
+    const y1=size/2+Math.sin(rad)*(r-stroke/2-2);
+    const x2=size/2+Math.cos(rad)*(r+stroke/2+2);
+    const y2=size/2+Math.sin(rad)*(r+stroke/2+2);
+    if(i%6===0){
+      ticks.push(<line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="rgba(255,255,255,.15)" strokeWidth={2}/>);
+      const tx=size/2+Math.cos(rad)*(r+stroke/2+14);
+      const ty=size/2+Math.sin(rad)*(r+stroke/2+14);
+      ticks.push(<text key={`t${i}`} x={tx} y={ty} fill="rgba(255,255,255,.3)" fontSize={11} textAnchor="middle" dominantBaseline="middle">{i}</text>);
+    } else {
+      ticks.push(<line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="rgba(255,255,255,.06)" strokeWidth={1}/>);
+    }
+  }
+  return(
+    <svg width={size} height={size} style={{transform:"rotate(0deg)"}}>
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="rgba(255,255,255,.04)" strokeWidth={stroke}/>
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="url(#rg)" strokeWidth={stroke}
+        strokeDasharray={circ} strokeDashoffset={offset} strokeLinecap="round"
+        style={{transition:"stroke-dashoffset .8s cubic-bezier(.4,0,.2,1)",transform:"rotate(-90deg)",transformOrigin:"center"}}/>
+      {ticks}
+      <defs><linearGradient id="rg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#f97316"/><stop offset="50%" stopColor="#ef4444"/><stop offset="100%" stopColor="#f97316"/></linearGradient></defs>
+    </svg>
+  );
+}
+
+function StatCard({label,value,sub,color="#fff"}){
+  return(
+    <div style={{background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.06)",borderRadius:16,padding:"16px 12px",textAlign:"center",flex:1,minWidth:0}}>
+      <div style={{fontSize:11,color:"#666",letterSpacing:".08em",marginBottom:6,textTransform:"uppercase"}}>{label}</div>
+      <div style={{fontSize:24,fontWeight:700,color}}>{value}</div>
+      {sub&&<div style={{fontSize:11,color:"#555",marginTop:4}}>{sub}</div>}
+    </div>
+  );
+}
+
+function App(){
+  const[laps,setLaps]=useState(0);
+  const[totalRunners,setTotalRunners]=useState(0);
+  const[currentRunners,setCurrentRunners]=useState(0);
+  const[editingTotal,setEditingTotal]=useState(false);
+  const[totalInput,setTotalInput]=useState("");
+  const[syncStatus,setSyncStatus]=useState("loading");
+  const[lastMilestone,setLastMilestone]=useState(null);
+  const saveTimeout=useRef(null);
+
+  useEffect(()=>{
+    (async()=>{
+      const data=await raceLoad();
+      if(data){
+        setLaps(data.laps||0);
+        setTotalRunners(data.totalRunners||0);
+        setCurrentRunners(data.currentRunners||0);
+        setSyncStatus("online");
+      } else {
+        setSyncStatus("offline");
+      }
+    })();
+  },[]);
+
+  // Auto-refresh every 15s
+  useEffect(()=>{
+    const iv=setInterval(async()=>{
+      const data=await raceLoad();
+      if(data){setLaps(data.laps||0);setTotalRunners(data.totalRunners||0);setCurrentRunners(data.currentRunners||0);setSyncStatus("online")}
+    },15000);
+    return()=>clearInterval(iv);
+  },[]);
+
+  function save(data){
+    setSyncStatus("syncing");
+    if(saveTimeout.current)clearTimeout(saveTimeout.current);
+    saveTimeout.current=setTimeout(async()=>{
+      const ok=await raceSave(data);
+      setSyncStatus(ok?"online":"offline");
+    },400);
+  }
+
+  function addLap(){
+    if(laps>=TOTAL_LAPS)return;
+    const next=laps+1;
+    setLaps(next);
+    const ms=MILESTONES.find(m=>m.laps===next);
+    if(ms)setLastMilestone(ms);
+    const data={laps:next,totalRunners,currentRunners};
+    save(data);
+  }
+
+  function removeLap(){
+    if(laps<=0)return;
+    const next=laps-1;
+    setLaps(next);
+    setLastMilestone(null);
+    save({laps:next,totalRunners,currentRunners});
+  }
+
+  function saveTotalRunners(){
+    const n=parseInt(totalInput)||0;
+    setTotalRunners(n);
+    setCurrentRunners(n);
+    setEditingTotal(false);
+    save({laps,totalRunners:n,currentRunners:n});
+  }
+
+  function adjustCurrentRunners(delta){
+    const next=Math.max(0,Math.min(totalRunners,currentRunners+delta));
+    setCurrentRunners(next);
+    save({laps,totalRunners,currentRunners:next});
+  }
+
+  const kmDone=(laps*KM_PER_LAP).toFixed(1);
+  const miDone=(laps*MI_PER_LAP).toFixed(1);
+  const kmLeft=((TOTAL_LAPS-laps)*KM_PER_LAP).toFixed(1);
+  const miLeft=((TOTAL_LAPS-laps)*MI_PER_LAP).toFixed(1);
+  const hoursLeft=TOTAL_LAPS-laps;
+  const pctDone=Math.round((laps/TOTAL_LAPS)*100);
+  const dropped=totalRunners-currentRunners;
+  const droppedPct=totalRunners>0?Math.round((dropped/totalRunners)*100):0;
+
+  // Current active milestone
+  const activeMilestones=MILESTONES.filter(m=>m.laps<=laps);
+  const nextMilestone=MILESTONES.find(m=>m.laps>laps);
+
+  // Equivalent distances for motivation
+  let equivalentText="";
+  if(laps>=24) equivalentText="100 Meilen / 160,9 km — FINISH!";
+  else if(kmLeft<=42.2) equivalentText=`Nur noch ${kmLeft} km — weniger als ein Marathon!`;
+  else if(kmLeft<=21.1) equivalentText=`Nur noch ${kmLeft} km — weniger als ein Halbmarathon!`;
+  else if(kmLeft<=100) equivalentText=`Noch ${kmLeft} km — unter 100 km!`;
+
+  const finished=laps>=TOTAL_LAPS;
+
+  return(
+    <div style={{minHeight:"100vh",background:"linear-gradient(180deg,#0a0a0a 0%,#111118 100%)",paddingBottom:40}}>
+
+      {/* Header */}
+      <div style={{background:"linear-gradient(135deg,rgba(239,68,68,.12) 0%,rgba(249,115,22,.06) 100%)",borderBottom:"1px solid rgba(255,255,255,.05)"}}>
+        <div style={{maxWidth:640,margin:"0 auto",padding:"16px 24px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <a href="index.html" style={{color:"#666",textDecoration:"none",fontSize:13}}>← Training</a>
+          <div style={{display:"flex",alignItems:"center",gap:6}}>
+            <span style={{fontFamily:"Georgia,serif",fontSize:16,fontWeight:700,letterSpacing:".1em"}}>RACE DAY</span>
+            <span className={`sync-dot ${syncStatus}`}/>
+          </div>
+          <div style={{width:60}}/>
+        </div>
+      </div>
+
+      <div style={{maxWidth:640,margin:"0 auto",padding:"0 20px"}}>
+
+        {/* Progress Ring */}
+        <div style={{textAlign:"center",paddingTop:24}}>
+          <div style={{position:"relative",display:"inline-block"}}>
+            <ProgressArc laps={laps}/>
+            <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
+              <div style={{fontSize:56,fontWeight:700,color:finished?"#10b981":"#fff",lineHeight:1}}>{laps}</div>
+              <div style={{fontSize:13,color:"#777",marginTop:4}}>von {TOTAL_LAPS} Runden</div>
+              {finished&&<div style={{fontSize:24,marginTop:8}}>🏆</div>}
+            </div>
+          </div>
+        </div>
+
+        {/* Add Lap Button */}
+        <div style={{display:"flex",gap:12,justifyContent:"center",marginTop:20}}>
+          <button onClick={removeLap} disabled={laps<=0}
+            style={{width:56,height:56,borderRadius:16,background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.1)",color:laps>0?"#fff":"#333",fontSize:24,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",opacity:laps>0?1:.3}}>
+            −
+          </button>
+          <button onClick={addLap} disabled={finished} className={!finished?"glow":""}
+            style={{height:56,borderRadius:16,padding:"0 32px",background:finished?"rgba(16,185,129,.2)":"linear-gradient(135deg,#f97316,#ef4444)",color:"#fff",fontSize:16,fontWeight:700,display:"flex",alignItems:"center",gap:10,letterSpacing:".05em",opacity:finished?.6:1}}>
+            {finished?"✓ FINISH":"+ RUNDE GESCHAFFT"}
+          </button>
+        </div>
+
+        {/* Milestone Toast */}
+        {lastMilestone&&(
+          <div style={{margin:"20px auto",maxWidth:400,padding:16,borderRadius:16,background:lastMilestone.highlight?"rgba(249,115,22,.12)":"rgba(255,255,255,.04)",border:lastMilestone.highlight?"1px solid rgba(249,115,22,.3)":"1px solid rgba(255,255,255,.06)",textAlign:"center"}}>
+            <div style={{fontSize:32,marginBottom:8}}>{lastMilestone.emoji}</div>
+            <p style={{color:lastMilestone.highlight?"#f97316":"#ccc",fontSize:14,fontWeight:lastMilestone.highlight?700:400,lineHeight:1.5}}>{lastMilestone.text}</p>
+          </div>
+        )}
+
+        {/* Next milestone */}
+        {nextMilestone&&!finished&&(
+          <div style={{textAlign:"center",marginTop:8}}>
+            <span style={{color:"#444",fontSize:12}}>Nächster Meilenstein: Runde {nextMilestone.laps} — {nextMilestone.emoji}</span>
+          </div>
+        )}
+
+        {/* Stats Grid */}
+        <div style={{paddingTop:24}}>
+          <h2 style={{fontSize:11,fontWeight:700,color:"#666",letterSpacing:".15em",marginBottom:12}}>STATISTIKEN</h2>
+          <div style={{display:"flex",gap:8,marginBottom:8}}>
+            <StatCard label="Gelaufen" value={`${kmDone} km`} sub={`${miDone} mi`} color="#10b981"/>
+            <StatCard label="Verbleibend" value={`${kmLeft} km`} sub={`${miLeft} mi`} color={hoursLeft<=6?"#f97316":"#fff"}/>
+            <StatCard label="Stunden" value={hoursLeft} sub={hoursLeft===1?"Stunde noch":"Stunden noch"} color={hoursLeft<=3?"#ef4444":"#fff"}/>
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <StatCard label="Fortschritt" value={`${pctDone}%`} color="#f97316"/>
+            <StatCard label="Pace Ziel" value="< 60 min" sub="pro 6,7 km"/>
+            <StatCard label="Distanz/Runde" value="6,706 km" sub="4,167 mi"/>
+          </div>
+        </div>
+
+        {/* Equivalent Distance */}
+        {equivalentText&&(
+          <div style={{marginTop:16,padding:"14px 20px",borderRadius:14,background:"rgba(249,115,22,.06)",border:"1px solid rgba(249,115,22,.15)",textAlign:"center"}}>
+            <span style={{color:"#f97316",fontSize:13,fontWeight:600}}>{equivalentText}</span>
+          </div>
+        )}
+
+        {/* Completed Milestones */}
+        {activeMilestones.length>0&&(
+          <div style={{paddingTop:28}}>
+            <h2 style={{fontSize:11,fontWeight:700,color:"#666",letterSpacing:".15em",marginBottom:12}}>MEILENSTEINE</h2>
+            <div style={{display:"flex",flexDirection:"column",gap:6}}>
+              {activeMilestones.slice().reverse().slice(0,5).map(m=>(
+                <div key={m.laps} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 14px",borderRadius:12,background:m.highlight?"rgba(249,115,22,.08)":"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.04)"}}>
+                  <span style={{fontSize:20}}>{m.emoji}</span>
+                  <div>
+                    <span style={{color:"#888",fontSize:11}}>Runde {m.laps}</span>
+                    <p style={{color:m.highlight?"#f97316":"#aaa",fontSize:13,margin:0}}>{m.text}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Runner Tracker */}
+        <div style={{paddingTop:32}}>
+          <h2 style={{fontSize:11,fontWeight:700,color:"#666",letterSpacing:".15em",marginBottom:12}}>FELD</h2>
+
+          {/* Total Runners */}
+          <div style={{padding:20,borderRadius:16,background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.06)",marginBottom:12}}>
+            <div style={{fontSize:12,color:"#777",marginBottom:8}}>Gestartete Läufer</div>
+            {editingTotal?(
+              <div style={{display:"flex",gap:10,alignItems:"center"}}>
+                <input type="number" value={totalInput} onChange={e=>setTotalInput(e.target.value)} autoFocus placeholder="Anzahl"
+                  style={{flex:1,height:44,borderRadius:12,background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.1)",color:"#fff",fontSize:18,fontWeight:700,textAlign:"center",padding:"0 12px",outline:"none"}}/>
+                <button onClick={saveTotalRunners}
+                  style={{height:44,padding:"0 20px",borderRadius:12,background:"#f97316",color:"#fff",fontSize:14,fontWeight:700}}>
+                  Speichern
+                </button>
+              </div>
+            ):(
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                <span style={{fontSize:32,fontWeight:700}}>{totalRunners||"–"}</span>
+                <button onClick={()=>{setEditingTotal(true);setTotalInput(String(totalRunners||""))}}
+                  style={{padding:"8px 16px",borderRadius:10,background:"rgba(255,255,255,.06)",color:"#888",fontSize:12}}>
+                  Ändern
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Current Runners */}
+          {totalRunners>0&&(
+            <div style={{padding:20,borderRadius:16,background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.06)",marginBottom:12}}>
+              <div style={{fontSize:12,color:"#777",marginBottom:8}}>Noch im Rennen</div>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                <div>
+                  <span style={{fontSize:32,fontWeight:700,color:"#10b981"}}>{currentRunners}</span>
+                  <span style={{fontSize:14,color:"#555",marginLeft:8}}>von {totalRunners}</span>
+                </div>
+                <div style={{display:"flex",gap:8}}>
+                  <button onClick={()=>adjustCurrentRunners(-1)} disabled={currentRunners<=0}
+                    style={{width:44,height:44,borderRadius:12,background:"rgba(239,68,68,.1)",border:"1px solid rgba(239,68,68,.2)",color:"#ef4444",fontSize:20,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",opacity:currentRunners>0?1:.3}}>
+                    −
+                  </button>
+                  <button onClick={()=>adjustCurrentRunners(1)} disabled={currentRunners>=totalRunners}
+                    style={{width:44,height:44,borderRadius:12,background:"rgba(16,185,129,.1)",border:"1px solid rgba(16,185,129,.2)",color:"#10b981",fontSize:20,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",opacity:currentRunners<totalRunners?1:.3}}>
+                    +
+                  </button>
+                </div>
+              </div>
+
+              {/* Drop-out bar */}
+              <div style={{marginTop:14}}>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#666",marginBottom:6}}>
+                  <span>Ausgeschieden: {dropped}</span>
+                  <span>{droppedPct}% raus</span>
+                </div>
+                <div style={{height:6,background:"rgba(255,255,255,.04)",borderRadius:3,overflow:"hidden"}}>
+                  <div style={{height:"100%",borderRadius:3,background:"linear-gradient(90deg,#ef4444,#f97316)",width:`${droppedPct}%`,transition:"width .6s ease"}}/>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Back to training link */}
+        <div style={{textAlign:"center",paddingTop:32,paddingBottom:20}}>
+          <a href="index.html" style={{color:"#555",textDecoration:"none",fontSize:13}}>← Zurück zum Trainingsplan</a>
+        </div>
+      </div>
+    </div>
+  );
+}
+ReactDOM.render(<App/>,document.getElementById("root"));
+</script>
+</body>
+</html>
